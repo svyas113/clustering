@@ -1,32 +1,3 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
-
-# Virtual environments
-.venv
-
-# Logs and local files
-*.log
-*.env
-
-# JSON files
-*.json
-
-# Report directories
-cluster_reports/*.md
-view_reports/*.md
-column_dictionaries/*.md
-table_reports/*.md
-*.md
-!README.md
-
-# Visualization outputs
-*.png
-*.html
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -201,3 +172,18 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# JSON files
+*.json
+
+# Report directories
+cluster_reports/*.md
+view_reports/*.md
+column_dictionaries/*.md
+table_reports/*.md
+*.md
+!README.md
+
+# Visualization outputs
+*.png
+*.html
