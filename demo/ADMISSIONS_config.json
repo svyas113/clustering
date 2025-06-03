@@ -1,0 +1,24 @@
+{
+    "weights": {
+        "subject_id": 0.06666666666666667,
+        "deathtime": 0.06666666666666667,
+        "admission_type": 0.06666666666666667,
+        "admission_location": 0.06666666666666667,
+        "discharge_location": 0.06666666666666667,
+        "insurance": 0.06666666666666667,
+        "language": 0.06666666666666667,
+        "religion": 0.06666666666666667,
+        "marital_status": 0.06666666666666667,
+        "ethnicity": 0.06666666666666667,
+        "edregtime": 0.06666666666666667,
+        "edouttime": 0.06666666666666667,
+        "diagnosis": 0.06666666666666667,
+        "hospital_expire_flag": 0.06666666666666667,
+        "has_chartevents_data": 0.06666666666666667
+    },
+    "min_support": 0.1,
+    "max_collection": -1,
+    "gamma": 0.7,
+    "lr_weights": 0.12,
+    "lr_gamma": 0.8
+}

@@ -172,18 +172,3 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
-
-# JSON files
-*.json
-
-# Report directories
-cluster_reports/*.md
-view_reports/*.md
-column_dictionaries/*.md
-table_reports/*.md
-*.md
-!README.md
-
-# Visualization outputs
-*.png
-*.html
