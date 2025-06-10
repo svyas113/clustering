@@ -4,8 +4,8 @@ from typing import Tuple
 from openai import OpenAI
 from dotenv import load_dotenv
 
-from data_preprocessing import generate_column_descriptions
-from itemset_mining import itemset_to_column_dict
+from .data_preprocessing import generate_column_descriptions
+from .itemset_mining import itemset_to_column_dict
 
 load_dotenv(dotenv_path="env/.env")
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")

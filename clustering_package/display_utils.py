@@ -1,7 +1,7 @@
 import pandas as pd
 from typing import Dict, List, Any
 
-from itemset_mining import itemset_to_column_dict
+from .itemset_mining import itemset_to_column_dict
 
 def _print_category_header(category_num: int, category_name: str, description: str) -> None:
     """Print a formatted header for a category of itemsets."""

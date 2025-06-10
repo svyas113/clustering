@@ -3,9 +3,9 @@ import numpy as np
 import itertools
 from typing import Dict, List, Tuple
 
-from itemset_mining import extract_columns, rank_maximal_frequent_itemsets, remove_columns_with_values_common_to_all_itemsets
-from display_utils import print_filtered_details_list
-from utils import collect_ranking_feedback
+from .itemset_mining import extract_columns, rank_maximal_frequent_itemsets, remove_columns_with_values_common_to_all_itemsets
+from .display_utils import print_filtered_details_list
+from .utils import collect_ranking_feedback
 
 # -------------------------------------------------------------------
 # logistic_loss_gradient:

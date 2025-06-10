@@ -11,7 +11,7 @@ import plotly
 from typing import Dict, List
 from scipy.cluster.hierarchy import dendrogram
 
-from clustering import calculate_similarity_matrix
+from .clustering import calculate_similarity_matrix
 
 def plot_dendrogram(pruned_itemsets: pd.DataFrame, row_id_colname: str, 
                    similarity_threshold: float = 0.4):
