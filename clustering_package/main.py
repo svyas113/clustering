@@ -10,15 +10,15 @@ load_dotenv(dotenv_path="env/.env")
 DB_PATH = os.environ.get("DB_PATH")
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 
-from data_preprocessing import prepare_data
-from itemset_mining import rank_maximal_frequent_itemsets, remove_columns_with_values_common_to_all_itemsets
-from clustering import cluster_hierarchically
-from display_utils import print_filtered_details_list, print_itemset_details, print_hierarchical_clusters
-from parameter_optimization import update_weights_with_ranking, test_learning_rate_combinations
-from utils import collect_ranking_feedback, group_itemsets_by_columns
-from visualization import visualize_all
-from llm_analysis import generate_itemset_summaries, categorize_itemsets_by_interest_level, generate_advanced_analysis
-from similarity_search import get_similar_itemsets, print_similar_itemsets, get_similar_clusters, print_similar_clusters
+from .data_preprocessing import prepare_data
+from .itemset_mining import rank_maximal_frequent_itemsets, remove_columns_with_values_common_to_all_itemsets
+from .clustering import cluster_hierarchically
+from .display_utils import print_filtered_details_list, print_itemset_details, print_hierarchical_clusters
+from .parameter_optimization import update_weights_with_ranking, test_learning_rate_combinations
+from .utils import collect_ranking_feedback, group_itemsets_by_columns
+from .visualization import visualize_all
+from .llm_analysis import generate_itemset_summaries, categorize_itemsets_by_interest_level, generate_advanced_analysis
+from .similarity_search import get_similar_itemsets, print_similar_itemsets, get_similar_clusters, print_similar_clusters
 
 def train(
     TD: pd.DataFrame, 

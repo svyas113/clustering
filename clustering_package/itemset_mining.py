@@ -4,7 +4,7 @@ import hashlib
 from mlxtend.frequent_patterns import fpmax
 from typing import Dict, List, FrozenSet
 
-from data_preprocessing import handle_high_cardinality_columns
+from .data_preprocessing import handle_high_cardinality_columns
 
 # -------------------------------------------------------------------
 # compute_score:

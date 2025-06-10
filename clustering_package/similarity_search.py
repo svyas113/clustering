@@ -3,7 +3,7 @@ import math
 from typing import Dict, List
 from collections import Counter
 
-from itemset_mining import extract_column_from_item, extract_value_from_item
+from .itemset_mining import extract_column_from_item, extract_value_from_item
 
 def get_similar_itemsets(
     pruned_itemsets: pd.DataFrame, 

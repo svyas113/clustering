@@ -4,7 +4,7 @@ from typing import Dict, List, Tuple
 from collections import defaultdict, Counter
 from scipy.cluster.hierarchy import fcluster, linkage
 
-from itemset_mining import extract_column_from_item, extract_value_from_item
+from .itemset_mining import extract_column_from_item, extract_value_from_item
 
 def cluster_itemsets_by_similarity(pruned_itemsets: pd.DataFrame, 
                                   row_id_colname: str, 
