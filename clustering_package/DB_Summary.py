@@ -1,5 +1,5 @@
 import os
-import sqlite3
+import psycopg2 # Changed from sqlite3
 import polars as pl
 import json
 from litellm import completion
@@ -672,44 +672,81 @@ def read_column_eda(table_name):
             print(f"Error reading column EDA file for table {table_name}: {str(e)}")
             return {}
 
-def analyze_table_with_clustering(db_path, table_name, row_id_colname):
+def analyze_table_with_clustering(db_connection_string, table_name, row_id_colname, schema_name="public"):
     """Analyze a single table using hierarchical clustering"""
-    conn = sqlite3.connect(db_path)
-    
-    cursor = conn.cursor()
-    cursor.execute(f"PRAGMA table_info({table_name});")
-    columns = cursor.fetchall()
-    
-    columns_info = []
-    for col in columns:
-        col_id, name, type_name, not_null, default_val, is_pk = col
-        columns_info.append({
-            "name": name,
-            "type": type_name,
-            "not_null": bool(not_null),
-            "default_value": default_val,
-            "is_primary_key": bool(is_pk)
-        })
-    
-    cursor.execute(f"SELECT COUNT(*) FROM {table_name};")
-    row_count = cursor.fetchone()[0]
-    
-    cursor.execute(f"PRAGMA foreign_key_list({table_name});")
-    foreign_keys = cursor.fetchall()
-    
-    fk_info = []
-    for fk in foreign_keys:
-        id, seq, table_name_fk, from_col, to_col, on_update, on_delete, match = fk
-        fk_info.append({
-            "table": table_name_fk,
-            "from_column": from_col,
-            "to_column": to_col,
-            "on_update": on_update,
-            "on_delete": on_delete
-        })
-    
-    query = f"SELECT * FROM {table_name}"
-    df = pl.read_database(query=query, connection=cursor, infer_schema_length=None)
+    conn = None
+    try:
+        conn = psycopg2.connect(db_connection_string)
+        cursor = conn.cursor()
+
+        # Get column information
+        # Adjusted to use fully qualified table name for safety, though schema_name.table_name is more standard for PG
+        cursor.execute(f"""
+            SELECT column_name, data_type, is_nullable, column_default, 
+                   (SELECT COUNT(*) 
+                    FROM information_schema.table_constraints tc
+                    JOIN information_schema.key_column_usage kcu 
+                    ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+                    WHERE tc.table_name = %s AND tc.table_schema = %s
+                    AND kcu.column_name = c.column_name AND tc.constraint_type = 'PRIMARY KEY') > 0 AS is_primary_key
+            FROM information_schema.columns c
+            WHERE table_name = %s AND table_schema = %s;
+        """, (table_name, schema_name, table_name, schema_name))
+        columns_data = cursor.fetchall()
+        
+        columns_info = []
+        for col_name, data_type, is_nullable, col_default, is_pk in columns_data:
+            columns_info.append({
+                "name": col_name,
+                "type": data_type,
+                "not_null": is_nullable == "NO",
+                "default_value": col_default,
+                "is_primary_key": bool(is_pk)
+            })
+        
+        cursor.execute(f"SELECT COUNT(*) FROM {schema_name}.\"{table_name}\";") # Quoted table name
+        row_count = cursor.fetchone()[0]
+        
+        # Get foreign key information
+        cursor.execute(f"""
+            SELECT
+                kcu.column_name AS from_column,
+                ccu.table_name AS to_table,
+                ccu.column_name AS to_column,
+                rc.update_rule AS on_update,
+                rc.delete_rule AS on_delete
+            FROM
+                information_schema.table_constraints AS tc
+                JOIN information_schema.key_column_usage AS kcu
+                  ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+                JOIN information_schema.constraint_column_usage AS ccu
+                  ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
+                JOIN information_schema.referential_constraints AS rc
+                  ON tc.constraint_name = rc.constraint_name AND tc.constraint_schema = rc.constraint_schema
+            WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_name=%s AND tc.table_schema = %s;
+        """, (table_name, schema_name))
+        foreign_keys_data = cursor.fetchall()
+        
+        fk_info = []
+        for from_col, to_table, to_col, on_update, on_delete in foreign_keys_data:
+            fk_info.append({
+                "table": to_table,
+                "from_column": from_col,
+                "to_column": to_col,
+                "on_update": on_update,
+                "on_delete": on_delete
+            })
+        
+        query = f"SELECT * FROM {schema_name}.\"{table_name}\"" # Quoted table name
+        # Polars can take a connection string directly for psycopg2
+        df = pl.read_database(query=query, connection_uri=db_connection_string, infer_schema_length=None)
+
+    except psycopg2.Error as e:
+        print(f"Database error in analyze_table_with_clustering for table {schema_name}.{table_name}: {e}")
+        return {"metadata": {}, "clustering": {}} # Return empty on error
+    finally:
+        if conn:
+            conn.close()
     
     TD = prepare_data(df, row_id_colname)
     
@@ -731,31 +768,48 @@ def analyze_table_with_clustering(db_path, table_name, row_id_colname):
         "row_count": row_count,
         "foreign_keys": fk_info
     }
-    
-    conn.close()
+    # conn.close() will be handled by the finally block
     
     return {
         "metadata": table_metadata, 
         "clustering": clusters_data
     }
 
-def analyze_view(db_path, view_name):
+def analyze_view(db_connection_string, view_name, schema_name="public"):
     """Analyze a single view based on its definition and sample data"""
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    
-    cursor.execute(f"SELECT sql FROM sqlite_master WHERE type='view' AND name='{view_name}';")
-    definition = cursor.fetchone()[0]
-    
-    cursor.execute(f"SELECT * FROM {view_name} LIMIT 1;")
-    columns = [description[0] for description in cursor.description]
-    
-    cursor.execute(f"SELECT COUNT(*) FROM {view_name};")
-    row_count = cursor.fetchone()[0]
-    
-    cursor.execute(f"SELECT * FROM {view_name} LIMIT 10;")
-    rows = cursor.fetchall()
-    
+    conn = None
+    definition = ""
+    columns = []
+    row_count = 0
+    rows = []
+    try:
+        conn = psycopg2.connect(db_connection_string)
+        cursor = conn.cursor()
+        
+        cursor.execute(f"SELECT view_definition FROM information_schema.views WHERE table_name = %s AND table_schema = %s;", (view_name, schema_name))
+        definition_result = cursor.fetchone()
+        if not definition_result:
+            print(f"View {schema_name}.{view_name} not found.")
+            return {"metadata": {}, "definition": "", "sample_data": ""}
+        definition = definition_result[0]
+        
+        # To get column names, execute a query with LIMIT 1
+        cursor.execute(f"SELECT * FROM {schema_name}.\"{view_name}\" LIMIT 1;") # Quoted view name
+        columns = [desc[0] for desc in cursor.description] if cursor.description else []
+        
+        cursor.execute(f"SELECT COUNT(*) FROM {schema_name}.\"{view_name}\";") # Quoted view name
+        row_count = cursor.fetchone()[0]
+        
+        cursor.execute(f"SELECT * FROM {schema_name}.\"{view_name}\" LIMIT 10;") # Quoted view name
+        rows = cursor.fetchall()
+
+    except psycopg2.Error as e:
+        print(f"Database error in analyze_view for view {schema_name}.{view_name}: {e}")
+        return {"metadata": {}, "definition": "", "sample_data": ""} # Return empty on error
+    finally:
+        if conn:
+            conn.close()
+            
     sample_data = f"Column names: {', '.join(columns)}\n\n"
     for i, row in enumerate(rows):
         formatted_row = []
@@ -771,8 +825,7 @@ def analyze_view(db_path, view_name):
         "columns": columns,
         "row_count": row_count
     }
-    
-    conn.close()
+    # conn.close() will be handled by the finally block from the initial try/except
     
     return {
         "metadata": view_metadata,
@@ -781,15 +834,14 @@ def analyze_view(db_path, view_name):
     }
 
 def main():
-    # Database path
-    db_path = "/Users/sanchitsatija/DB_SUMMARY.db"
-    
-    # Check if the file exists
-    if not os.path.exists(db_path):
-        print(f"Error: Database file not found at {db_path}")
+    # PostgreSQL connection string
+    print("Please enter your PostgreSQL connection string (e.g., postgresql://user:password@host:port/dbname):")
+    db_connection_string = input().strip()
+    if not db_connection_string:
+        print("No connection string provided. Exiting.")
         return
-    
-    print(f"Analyzing database: {db_path}")
+
+    print(f"Analyzing database using connection: {db_connection_string}")
     
     # Get API key
     api_key = os.environ.get("DEEPSEEK_API_KEY")
@@ -799,55 +851,99 @@ def main():
     if not api_key:
         print("No API key provided. Analysis will be skipped.")
         return
-    
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
 
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-    tables = [table[0] for table in cursor.fetchall()]
-    
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='view';")
-    views = [view[0] for view in cursor.fetchall()]
-    
-    db_metadata = {
-        "database_path": db_path,
-        "tables": tables,
-        "views": views,
-        "table_count": len(tables),
-        "view_count": len(views)
-    }
-    
-    conn.close()
+    conn = None  # Initialize conn to None
+    try:
+        conn = psycopg2.connect(db_connection_string)
+        cursor = conn.cursor()
+
+        # Get table names (excluding system tables)
+        cursor.execute("""
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+            AND table_type = 'BASE TABLE';
+        """)
+        tables = [table[0] for table in cursor.fetchall()]
+        
+        # Get view names (excluding system views)
+        cursor.execute("""
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+            AND table_type = 'VIEW';
+        """)
+        views = [view[0] for view in cursor.fetchall()]
+        
+        db_metadata = {
+            "connection_string": db_connection_string,
+            "tables": tables,
+            "views": views,
+            "table_count": len(tables),
+            "view_count": len(views)
+        }
+        
+    except psycopg2.Error as e:
+        print(f"Error connecting to PostgreSQL database: {e}")
+        return
+    finally:
+        if conn:
+            conn.close()
     
     # For each table, perform clustering analysis
     table_results = {}
-    
+    schema_name = "public" # Assuming public schema for now, can be made configurable
+
     for table in tables:
-        print(f"\nAnalyzing table: {table}")
+        print(f"\nAnalyzing table: {schema_name}.{table}")
         
         # Ask user for row ID column for this table
-        print(f"Specify row ID column for table {table}:")
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute(f"PRAGMA table_info({table});")
-        columns = cursor.fetchall()
-        conn.close()
-        
+        print(f"Specify row ID column for table {schema_name}.{table}:")
+        conn_temp = None
+        try:
+            conn_temp = psycopg2.connect(db_connection_string)
+            cursor_temp = conn_temp.cursor()
+            cursor_temp.execute(f"""
+                SELECT column_name, data_type 
+                FROM information_schema.columns 
+                WHERE table_schema = %s AND table_name = %s;
+            """, (schema_name, table))
+            columns_data = cursor_temp.fetchall()
+        except psycopg2.Error as e:
+            print(f"Error fetching columns for {schema_name}.{table}: {e}")
+            continue # Skip this table if columns can't be fetched
+        finally:
+            if conn_temp:
+                conn_temp.close()
+
+        if not columns_data:
+            print(f"No columns found for table {schema_name}.{table}. Skipping.")
+            continue
+            
         print("\nAvailable columns:")
-        for i, col in enumerate(columns):
-            print(f"{i+1}. {col[1]} ({col[2]})")
+        for i, (col_name, col_type) in enumerate(columns_data):
+            print(f"{i+1}. {col_name} ({col_type})")
         
-        id_col_index = int(input("Enter the number of the column to use as row identifier: ")) - 1
-        row_id_colname = columns[id_col_index][1]
+        while True:
+            try:
+                id_col_input = input("Enter the number of the column to use as row identifier: ")
+                id_col_index = int(id_col_input) - 1
+                if 0 <= id_col_index < len(columns_data):
+                    row_id_colname = columns_data[id_col_index][0]
+                    break
+                else:
+                    print(f"Invalid selection. Please enter a number between 1 and {len(columns_data)}.")
+            except ValueError:
+                print("Invalid input. Please enter a number.")
         
-        results = analyze_table_with_clustering(db_path, table, row_id_colname)
+        results = analyze_table_with_clustering(db_connection_string, table, row_id_colname, schema_name)
         table_results[table] = results
     
     view_results = {}
     
     for view in views:
-        print(f"\nAnalyzing view: {view}")
-        results = analyze_view(db_path, view)
+        print(f"\nAnalyzing view: {schema_name}.{view}")
+        results = analyze_view(db_connection_string, view, schema_name)
         view_results[view] = results
     
     analyzer = DatabaseInsightReport(api_key=api_key)
